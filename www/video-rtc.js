@@ -561,7 +561,36 @@ export class VideoRTC extends HTMLElement {
 
         for (const kind of ['video', 'audio']) {
             if (this.media.indexOf(kind) >= 0) {
-                pc.addTransceiver(kind, {direction: 'recvonly'});
+                // Add explicit codec preferences for video to include H265
+                if (kind === 'video') {
+                    const transceiver = pc.addTransceiver(kind, {direction: 'recvonly'});
+                    // Set codec preferences if the browser supports it
+                    if (RTCRtpSender.getCapabilities && transceiver.setCodecPreferences) {
+                        const capabilities = RTCRtpSender.getCapabilities(kind);
+                        if (capabilities && capabilities.codecs) {
+                            // Prioritize H265/HEVC if available
+                            const codecs = capabilities.codecs;
+                            const h265Codecs = codecs.filter(c => c.mimeType.toLowerCase() === 'video/h265');
+                            const h264Codecs = codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
+                            const otherCodecs = codecs.filter(c => 
+                                c.mimeType.toLowerCase() !== 'video/h265' && 
+                                c.mimeType.toLowerCase() !== 'video/h264');
+                            
+                            // Reorder codecs to prioritize H265, then H264, then others
+                            if (h265Codecs.length > 0) {
+                                const reorderedCodecs = [...h265Codecs, ...h264Codecs, ...otherCodecs];
+                                try {
+                                    transceiver.setCodecPreferences(reorderedCodecs);
+                                    console.log('H265 codec prioritized for WebRTC');
+                                } catch (e) {
+                                    console.warn('Failed to set codec preferences:', e);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    pc.addTransceiver(kind, {direction: 'recvonly'});
+                }
             }
         }
 
